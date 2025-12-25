@@ -1,10 +1,11 @@
+import { getSopCategory } from "./src/groq.js";
 import { SOP_PROMPT } from "./sop.js";
 
 export default {
     async fetch(request, env) {
         const url = new URL(request.url);
 
-        // --- FITUR REGISTRASI MENU (GET /set-menu) ---
+        // --- FITUR REGISTRASI MENU ---
         if (request.method === "GET" && url.pathname === "/set-menu") {
             const result = await setBotMenu(env.BOT_TOKEN);
             return new Response(JSON.stringify(result), {
@@ -33,7 +34,7 @@ export default {
         // --- FITUR START & SET MENU OTOMATIS ---
         if (userText.toLowerCase() === "/start") {
             await setBotMenu(env.BOT_TOKEN);
-            await sendTelegramMessage(env.BOT_TOKEN, chatId, "Selamat datang! Menu bot telah diaktifkan.\n\nAnda bisa menggunakan tombol 'Menu' di samping kolom ketikan untuk melakukan /reset percakapan.");
+            await sendTelegramMessage(env.BOT_TOKEN, chatId, "Selamat datang! Sistem Selektor SOP telah aktif.\n\nKirimkan pesan customer ke sini.");
             return new Response("OK", { status: 200 });
         }
 
@@ -42,7 +43,7 @@ export default {
             if (env.CHAT_HISTORY) {
                 await env.CHAT_HISTORY.delete(`history_${chatId}`);
             }
-            await sendTelegramMessage(env.BOT_TOKEN, chatId, "🔄 Memori percakapan telah dihapus. Sesi baru dimulai!");
+            await sendTelegramMessage(env.BOT_TOKEN, chatId, "🔄 Memori telah dihapus. Sesi baru dimulai!");
             return new Response("OK", { status: 200 });
         }
 
@@ -55,32 +56,67 @@ export default {
             }
         }
 
-        // 1. Dapatkan jawaban dari AI (Groq) berdasarkan SOP & Memori
-        const aiResponse = await getGroqResponse(env.GROQ_API_KEY, userText, history);
+        try {
+            // 1. Groq Bertindak sebagai Selector (Hanya pilih Kategori)
+            const category = await getSopCategory(env.GROQ_API_KEY, userText, history);
 
-        // 2. Simpan Riwayat Baru ke KV (Maksimal 10 pesan terakhir)
-        if (env.CHAT_HISTORY) {
-            history.push({ role: "user", content: userText });
-            history.push({ role: "assistant", content: aiResponse });
+            // 2. LOGIKA PENJAWAB (Sesuai Kategori)
+            // Catatan: Anda bisa mengubah sop.js untuk mengekspor template jawaban.
+            // Untuk sementara, saya biarkan AI memberikan jawaban berdasarkan SOP_PROMPT penuh 
+            // ATAU kita bisa mapping jika sop.js sudah Anda ubah bentuknya.
 
-            // Batasi 10 pesan terakhir (20 item)
-            if (history.length > 20) {
-                history = history.slice(-20);
+            // Contoh implementasi selector:
+            let responseText = `[AI SELECTED CATEGORY: ${category}]\n\n`;
+
+            // Sementara gunakan AI untuk generate jawaban lengkap berdasarkan kategori terpilih
+            // (Nanti bisa diganti dengan template kaku dari sop.js)
+            responseText += await getFinalResponse(env.GROQ_API_KEY, userText, category, history);
+
+            // 3. Simpan Riwayat
+            if (env.CHAT_HISTORY) {
+                history.push({ role: "user", content: userText });
+                history.push({ role: "assistant", content: responseText });
+                if (history.length > 20) history = history.slice(-20);
+                await env.CHAT_HISTORY.put(`history_${chatId}`, JSON.stringify(history), { expirationTtl: 86400 });
             }
 
-            await env.CHAT_HISTORY.put(`history_${chatId}`, JSON.stringify(history), { expirationTtl: 86400 });
-        }
+            // 4. Kirim ke Telegram
+            await sendTelegramMessage(env.BOT_TOKEN, chatId, responseText);
 
-        // 3. Kirim jawaban ke Telegram
-        await sendTelegramMessage(
-            env.BOT_TOKEN,
-            chatId,
-            aiResponse
-        );
+        } catch (error) {
+            console.error("ERROR:", error.message);
+            await sendTelegramMessage(env.BOT_TOKEN, chatId, "Maaf kak sedang ada gangguan teknis.");
+        }
 
         return new Response("OK", { status: 200 });
     }
 };
+
+// Fungsi pembantu untuk jawaban akhir (bisa dipindahkan ke src/groq.js juga)
+async function getFinalResponse(apiKey, userInput, category, history) {
+    const url = "https://api.groq.com/openai/v1/chat/completions";
+    const messages = [
+        { role: "system", content: `${SOP_PROMPT}\n\nINSTRUKSI KHUSUS: Gunakan SOP Kategori ${category} untuk menjawab.` },
+        ...history.slice(-10),
+        { role: "user", content: userInput }
+    ];
+
+    const response = await fetch(url, {
+        method: "POST",
+        headers: {
+            "Authorization": `Bearer ${apiKey}`,
+            "Content-Type": "application/json"
+        },
+        body: JSON.stringify({
+            model: "llama-3.3-70b-versatile",
+            messages: messages,
+            temperature: 0.7
+        })
+    });
+
+    const data = await response.json();
+    return data.choices[0].message.content;
+}
 
 async function setBotMenu(token) {
     const url = `https://api.telegram.org/bot${token}/setMyCommands`;
@@ -89,71 +125,19 @@ async function setBotMenu(token) {
             { command: "reset", description: "Hapus memori & Mulai sesi baru" }
         ]
     };
-
     const response = await fetch(url, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(body)
     });
-
     return await response.json();
-}
-
-async function getGroqResponse(apiKey, userInput, history) {
-    if (!apiKey) {
-        console.error("DEBUG: GROQ_API_KEY is missing.");
-        return "Maaf kak, konfigurasi AI (Groq API Key) belum terpasang di dashboard Cloudflare.";
-    }
-
-    const url = "https://api.groq.com/openai/v1/chat/completions";
-
-    const messages = [
-        { role: "system", content: SOP_PROMPT }
-    ];
-
-    if (history && history.length > 0) {
-        messages.push(...history);
-    }
-
-    messages.push({ role: "user", content: `Pesan Customer: "${userInput}"\n\nBerikan balasan yang sesuai SOP dalam bahasa Indonesia yang ramah namun tegas.` });
-
-    try {
-        const response = await fetch(url, {
-            method: "POST",
-            headers: {
-                "Authorization": `Bearer ${apiKey}`,
-                "Content-Type": "application/json"
-            },
-            body: JSON.stringify({
-                model: "llama-3.3-70b-versatile",
-                messages: messages,
-                temperature: 0.7
-            })
-        });
-
-        const data = await response.json();
-
-        if (!response.ok) {
-            console.error("DEBUG: Groq API Error:", JSON.stringify(data));
-            return `Maaf kak, ada kendala teknis pada sistem pendukung (Groq Error ${response.status}).`;
-        }
-
-        return data.choices[0].message.content;
-    } catch (error) {
-        console.error("DEBUG: System Error:", error.message);
-        return "Maaf kak, sistem sedang tidak merespon. Mohon hubungi kami beberapa saat lagi.";
-    }
 }
 
 async function sendTelegramMessage(token, chatId, text) {
     const url = `https://api.telegram.org/bot${token}/sendMessage`;
-
     await fetch(url, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-            chat_id: chatId,
-            text
-        })
+        body: JSON.stringify({ chat_id: chatId, text })
     });
 }
