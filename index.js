@@ -19,7 +19,7 @@ export default {
         const userText = data.message.text;
 
         // 1. Dapatkan jawaban dari AI (Gemini) berdasarkan SOP
-        const aiResponse = await getGeminiResponse(env.GEMINI_API_KEY, userText);
+        const aiResponse = await getGeminiResponse(env.GEMINI_API_KEY, userText, request);
 
         // 2. Kirim jawaban ke Telegram
         await sendTelegramMessage(
@@ -32,13 +32,17 @@ export default {
     }
 };
 
-async function getGeminiResponse(apiKey, userInput) {
+async function getGeminiResponse(apiKey, userInput, request) {
     if (!apiKey) {
         console.error("DEBUG: GEMINI_API_KEY is missing or undefined.");
         return "Maaf kak, konfigurasi AI (API Key) belum terpasang di dashboard Cloudflare.";
     }
 
-    const url = `https://generativelanguage.googleapis.com/v1/models/gemini-1.5-flash:generateContent?key=${apiKey}`;
+    const country = request.headers.get("cf-ipcountry") || "Unknown";
+    console.log(`DEBUG: Request executing from country: ${country}`);
+
+    // Mencoba v1beta kembali dengan model 'latest' yang biasanya lebih stabil untuk free tier
+    const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash-latest:generateContent?key=${apiKey}`;
 
     const sopPrompt = `
 ANDA ADALAH: CS Profesional Jasa Custom Desain Ilustrasi Kaos.
