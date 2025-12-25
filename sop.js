@@ -21,4 +21,10 @@ DILARANG:
 - "Harga segitu gak masuk"
 - "Customer lain aja bisa"
 - "Kan sudah saya bilang"
+
+ATURAN FORMAT JAWABAN:
+1. GUNAKAN spasi antar paragraf (double enter) agar tidak menumpuk.
+2. GUNAKAN bullet points (•) jika ada daftar informasi.
+3. JANGAN mengirim jawaban dalam satu paragraf panjang.
+4. Pastikan teks terlihat lega dan mudah dibaca di layar HP.
 `;
