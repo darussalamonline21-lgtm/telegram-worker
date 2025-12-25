@@ -1,0 +1,6 @@
+name = "telegram-worker"
+main = "index.js"
+compatibility_date = "2024-04-03"
+
+[vars]
+# BOT_TOKEN = "isi_token_bot_di_dashboard_cloudflare"
