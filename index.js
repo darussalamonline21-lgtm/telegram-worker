@@ -30,6 +30,13 @@ export default {
         const chatId = data.message.chat.id;
         const userText = data.message.text;
 
+        // --- FITUR START & SET MENU OTOMATIS ---
+        if (userText.toLowerCase() === "/start") {
+            await setBotMenu(env.BOT_TOKEN);
+            await sendTelegramMessage(env.BOT_TOKEN, chatId, "Selamat datang! Menu bot telah diaktifkan.\n\nAnda bisa menggunakan tombol 'Menu' di samping kolom ketikan untuk melakukan /reset percakapan.");
+            return new Response("OK", { status: 200 });
+        }
+
         // --- FITUR RESET ---
         if (userText.toLowerCase() === "/reset") {
             if (env.CHAT_HISTORY) {
