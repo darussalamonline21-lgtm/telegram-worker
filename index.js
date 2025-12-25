@@ -33,6 +33,11 @@ export default {
 };
 
 async function getGeminiResponse(apiKey, userInput) {
+    if (!apiKey) {
+        console.error("DEBUG: GEMINI_API_KEY is missing or undefined.");
+        return "Maaf kak, konfigurasi AI (API Key) belum terpasang di dashboard Cloudflare.";
+    }
+
     const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${apiKey}`;
 
     const sopPrompt = `
@@ -74,9 +79,21 @@ Berikan balasan yang sesuai SOP dalam bahasa Indonesia yang ramah namun tegas.
         });
 
         const data = await response.json();
-        return data.candidates[0].content.parts[0].text;
+
+        if (!response.ok) {
+            console.error("DEBUG: Gemini API Error Response:", JSON.stringify(data));
+            return `Maaf kak, ada kendala komunikasi dengan AI (Error ${response.status}).`;
+        }
+
+        if (data.candidates && data.candidates[0] && data.candidates[0].content) {
+            return data.candidates[0].content.parts[0].text;
+        } else {
+            console.error("DEBUG: Unexpected Gemini response format:", JSON.stringify(data));
+            return "Maaf kak, respon AI tidak sesuai format. Silakan coba lagi.";
+        }
     } catch (error) {
-        return "Maaf kak, sedang ada kendala teknis. Mohon tunggu sebentar ya.";
+        console.error("DEBUG: Fetch/System Error:", error.message);
+        return "Maaf kak, sistem pendukung sedang tidak merespon. Mohon tunggu ya.";
     }
 }
 
