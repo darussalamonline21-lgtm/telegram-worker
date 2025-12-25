@@ -38,7 +38,7 @@ async function getGeminiResponse(apiKey, userInput) {
         return "Maaf kak, konfigurasi AI (API Key) belum terpasang di dashboard Cloudflare.";
     }
 
-    const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${apiKey}`;
+    const url = `https://generativelanguage.googleapis.com/v1/models/gemini-1.5-flash:generateContent?key=${apiKey}`;
 
     const sopPrompt = `
 ANDA ADALAH: CS Profesional Jasa Custom Desain Ilustrasi Kaos.
