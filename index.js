@@ -20,10 +20,41 @@ export default {
         const chatId = data.message.chat.id;
         const userText = data.message.text;
 
-        // 1. Dapatkan jawaban dari AI (Groq) berdasarkan SOP
-        const aiResponse = await getGroqResponse(env.GROQ_API_KEY, userText);
+        // --- FITUR RESET ---
+        if (userText.toLowerCase() === "/reset") {
+            if (env.CHAT_HISTORY) {
+                await env.CHAT_HISTORY.delete(`history_${chatId}`);
+            }
+            await sendTelegramMessage(env.BOT_TOKEN, chatId, "🔄 Memori percakapan telah dihapus. Sesi baru dimulai!");
+            return new Response("OK", { status: 200 });
+        }
 
-        // 2. Kirim jawaban ke Telegram
+        // --- FITUR MEMORI (KV) ---
+        let history = [];
+        if (env.CHAT_HISTORY) {
+            const storedHistory = await env.CHAT_HISTORY.get(`history_${chatId}`);
+            if (storedHistory) {
+                history = JSON.parse(storedHistory);
+            }
+        }
+
+        // 1. Dapatkan jawaban dari AI (Groq) berdasarkan SOP & Memori
+        const aiResponse = await getGroqResponse(env.GROQ_API_KEY, userText, history);
+
+        // 2. Simpan Riwayat Baru ke KV (Maksimal 10 pesan terakhir agar tidak terlalu panjang)
+        if (env.CHAT_HISTORY) {
+            history.push({ role: "user", content: userText });
+            history.push({ role: "assistant", content: aiResponse });
+
+            // Batasi 10 pesan terakhir (20 item)
+            if (history.length > 20) {
+                history = history.slice(-20);
+            }
+
+            await env.CHAT_HISTORY.put(`history_${chatId}`, JSON.stringify(history), { expirationTtl: 86400 }); // Expire dalam 24 jam
+        }
+
+        // 3. Kirim jawaban ke Telegram
         await sendTelegramMessage(
             env.BOT_TOKEN,
             chatId,
@@ -34,7 +65,7 @@ export default {
     }
 };
 
-async function getGroqResponse(apiKey, userInput) {
+async function getGroqResponse(apiKey, userInput, history) {
     if (!apiKey) {
         console.error("DEBUG: GROQ_API_KEY is missing.");
         return "Maaf kak, konfigurasi AI (Groq API Key) belum terpasang di dashboard Cloudflare.";
@@ -42,13 +73,18 @@ async function getGroqResponse(apiKey, userInput) {
 
     const url = "https://api.groq.com/openai/v1/chat/completions";
 
-    const fullPrompt = `
-${SOP_PROMPT}
+    // Siapkan pesan untuk dikirim ke API
+    const messages = [
+        { role: "system", content: SOP_PROMPT }
+    ];
 
-Pesan Customer: "${userInput}"
+    // Tambahkan riwayat jika ada
+    if (history && history.length > 0) {
+        messages.push(...history);
+    }
 
-Berikan balasan yang sesuai SOP dalam bahasa Indonesia yang ramah namun tegas.
-    `;
+    // Tambahkan pesan terbaru user
+    messages.push({ role: "user", content: `Pesan Customer: "${userInput}"\n\nBerikan balasan yang sesuai SOP dalam bahasa Indonesia yang ramah namun tegas.` });
 
     try {
         const response = await fetch(url, {
@@ -59,10 +95,7 @@ Berikan balasan yang sesuai SOP dalam bahasa Indonesia yang ramah namun tegas.
             },
             body: JSON.stringify({
                 model: "llama-3.3-70b-versatile",
-                messages: [
-                    { role: "system", content: "Anda adalah asisten CS profesional yang mengikuti SOP perusahaan." },
-                    { role: "user", content: fullPrompt }
-                ],
+                messages: messages,
                 temperature: 0.7
             })
         });

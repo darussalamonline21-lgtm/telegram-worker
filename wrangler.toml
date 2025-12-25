@@ -4,3 +4,7 @@ compatibility_date = "2024-04-03"
 
 [vars]
 # BOT_TOKEN = "isi_token_bot_di_dashboard_cloudflare"
+
+[[kv_namespaces]]
+binding = "CHAT_HISTORY"
+id = "ID_KV_NAMESPACE_ANDA" # Nanti diganti dengan ID asli dari dashboard
