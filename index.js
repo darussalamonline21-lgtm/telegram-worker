@@ -1,4 +1,4 @@
-import { pickSOPWithGroq } from "./src/groq.js";
+import { getFlexibleResponseWithGroq } from "./src/groq.js";
 import { SOP_TEMPLATES } from "./sop.js";
 
 export default {
@@ -34,7 +34,7 @@ export default {
         // --- FITUR START ---
         if (userText.toLowerCase() === "/start") {
             await setBotMenu(env.BOT_TOKEN);
-            await sendTelegramMessage(env.BOT_TOKEN, chatId, "Selamat datang! Sistem Selektor SOP (Template Kaku) telah aktif.\n\nSilakan kirimkan pesan customer ke sini, saya akan memilihkan jawaban terbaik.");
+            await sendTelegramMessage(env.BOT_TOKEN, chatId, "Selamat datang! Sistem CS AI (Fleksibel Berbasis SOP) telah aktif.\n\nSilakan masukkan pesan customer, saya akan membantu memberikan balasan yang tepat.");
             return new Response("OK", { status: 200 });
         }
 
@@ -48,8 +48,6 @@ export default {
         }
 
         // --- FITUR MEMORI (KV) ---
-        // Catatan: Walaupun pickSOPWithGroq saat ini belum menggunakan history, 
-        // kita tetap simpan agar sistem tetap memiliki basis data jika nanti ingin dikembangkan.
         let history = [];
         if (env.CHAT_HISTORY) {
             const storedHistory = await env.CHAT_HISTORY.get(`history_${chatId}`);
@@ -59,23 +57,23 @@ export default {
         }
 
         try {
-            // 1. Groq Bertindak sebagai Selector (Memilih jawaban dari SOP_TEMPLATES)
-            const responseText = await pickSOPWithGroq(userText, SOP_TEMPLATES, env.GROQ_API_KEY);
+            // 1. Dapatkan jawaban fleksibel berbasis SOP
+            const aiResponse = await getFlexibleResponseWithGroq(userText, SOP_TEMPLATES, history, env.GROQ_API_KEY);
 
             // 2. Simpan Riwayat
             if (env.CHAT_HISTORY) {
                 history.push({ role: "user", content: userText });
-                history.push({ role: "assistant", content: responseText });
+                history.push({ role: "assistant", content: aiResponse });
                 if (history.length > 20) history = history.slice(-20);
                 await env.CHAT_HISTORY.put(`history_${chatId}`, JSON.stringify(history), { expirationTtl: 86400 });
             }
 
             // 3. Kirim ke Telegram
-            await sendTelegramMessage(env.BOT_TOKEN, chatId, responseText);
+            await sendTelegramMessage(env.BOT_TOKEN, chatId, aiResponse);
 
         } catch (error) {
             console.error("ERROR:", error.message);
-            await sendTelegramMessage(env.BOT_TOKEN, chatId, "Maaf kak, ada sedikit kendala koneksi dengan sistem selektor.");
+            await sendTelegramMessage(env.BOT_TOKEN, chatId, "Maaf kak, ada gangguan teknis pada sistem.");
         }
 
         return new Response("OK", { status: 200 });
