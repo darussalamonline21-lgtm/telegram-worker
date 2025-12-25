@@ -41,7 +41,7 @@ export default {
         // 1. Dapatkan jawaban dari AI (Groq) berdasarkan SOP & Memori
         const aiResponse = await getGroqResponse(env.GROQ_API_KEY, userText, history);
 
-        // 2. Simpan Riwayat Baru ke KV (Maksimal 10 pesan terakhir agar tidak terlalu panjang)
+        // 2. Simpan Riwayat Baru ke KV (Maksimal 10 pesan terakhir)
         if (env.CHAT_HISTORY) {
             history.push({ role: "user", content: userText });
             history.push({ role: "assistant", content: aiResponse });
@@ -51,7 +51,7 @@ export default {
                 history = history.slice(-20);
             }
 
-            await env.CHAT_HISTORY.put(`history_${chatId}`, JSON.stringify(history), { expirationTtl: 86400 }); // Expire dalam 24 jam
+            await env.CHAT_HISTORY.put(`history_${chatId}`, JSON.stringify(history), { expirationTtl: 86400 });
         }
 
         // 3. Kirim jawaban ke Telegram
@@ -73,17 +73,14 @@ async function getGroqResponse(apiKey, userInput, history) {
 
     const url = "https://api.groq.com/openai/v1/chat/completions";
 
-    // Siapkan pesan untuk dikirim ke API
     const messages = [
         { role: "system", content: SOP_PROMPT }
     ];
 
-    // Tambahkan riwayat jika ada
     if (history && history.length > 0) {
         messages.push(...history);
     }
 
-    // Tambahkan pesan terbaru user
     messages.push({ role: "user", content: `Pesan Customer: "${userInput}"\n\nBerikan balasan yang sesuai SOP dalam bahasa Indonesia yang ramah namun tegas.` });
 
     try {
