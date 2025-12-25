@@ -1,56 +1,43 @@
-export async function getSopCategory(apiKey, userInput, history) {
-    if (!apiKey) {
-        throw new Error("GROQ_API_KEY is missing.");
-    }
+export async function pickSOPWithGroq(userText, templates, apiKey) {
+    const prompt = `
+You are a classifier.
+Your task is to select the SINGLE most relevant SOP category.
+Do NOT write a reply.
+Do NOT combine categories.
 
-    const url = "https://api.groq.com/openai/v1/chat/completions";
+Customer message:
+"${userText}"
 
-    const selectorPrompt = `
-        Tugas Anda adalah sebagai "Intent Selector". 
-        Analisis pesan customer dan tentukan kategori SOP yang paling cocok.
-        
-        KATEGORI:
-        A: TANPA KONSEP - Customer tidak punya referensi/tema.
-        B: NEGOSIASI HARGA - Customer minta diskon atau komplain harga.
-        C: MINTA CEPAT - Customer buru-buru atau tanya durasi.
-        D: REVISI - Customer tanya soal revisi atau ganti konsep.
-        E: BANDINGKAN VENDOR - Customer menyebut kompetitor lain.
-        F: TIDAK SERIUS - Chat tidak jelas, hanya halo, atau tidak relevan.
-        G: LAINNYA - Pertanyaan umum di luar kategori di atas.
+SOP categories:
+${templates.map((t, i) => `${i + 1}. ${t.title}`).join("\n")}
 
-        ATURAN:
-        HANYA kembalikan satu huruf kategori (A/B/C/D/E/F/G). 
-        Jangan berikan penjelasan apapun.
-    `;
+Rules:
+- Choose the category that BEST matches the customer's intent.
+- If the customer mentions price comparison or cheap price → choose price-related.
+- If the customer has no clear idea or says "bebas" → choose no-concept.
+- If the customer pushes urgency → choose rush.
+- Return ONLY the number.
+`;
 
-    const messages = [
-        { role: "system", content: selectorPrompt }
-    ];
-
-    if (history && history.length > 0) {
-        // Hanya ambil 3 pesan terakhir untuk konteks pemilihan kategori (opsional)
-        messages.push(...history.slice(-6));
-    }
-
-    messages.push({ role: "user", content: userInput });
-
-    const response = await fetch(url, {
+    const res = await fetch("https://api.groq.com/openai/v1/chat/completions", {
         method: "POST",
         headers: {
             "Authorization": `Bearer ${apiKey}`,
             "Content-Type": "application/json"
         },
         body: JSON.stringify({
-            model: "llama-3.3-70b-versatile",
-            messages: messages,
-            temperature: 0.1 // Rendah agar konsisten
+            model: "llama3-70b-8192",
+            temperature: 0,
+            messages: [
+                { role: "system", content: "You classify intent only." },
+                { role: "user", content: prompt }
+            ]
         })
     });
 
-    const data = await response.json();
-    if (!response.ok) {
-        throw new Error(`Groq Error: ${response.status}`);
-    }
+    const json = await res.json();
+    const idx = parseInt(json.choices[0].message.content.trim(), 10) - 1;
 
-    return data.choices[0].message.content.trim().toUpperCase().charAt(0);
+    return templates[idx]?.reply
+        || "Mohon jelaskan kebutuhan desain kak agar kami bisa bantu dengan tepat.";
 }

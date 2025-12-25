@@ -1,5 +1,5 @@
-import { getSopCategory } from "./src/groq.js";
-import { SOP_PROMPT } from "./sop.js";
+import { pickSOPWithGroq } from "./src/groq.js";
+import { SOP_TEMPLATES } from "./sop.js";
 
 export default {
     async fetch(request, env) {
@@ -31,10 +31,10 @@ export default {
         const chatId = data.message.chat.id;
         const userText = data.message.text;
 
-        // --- FITUR START & SET MENU OTOMATIS ---
+        // --- FITUR START ---
         if (userText.toLowerCase() === "/start") {
             await setBotMenu(env.BOT_TOKEN);
-            await sendTelegramMessage(env.BOT_TOKEN, chatId, "Selamat datang! Sistem Selektor SOP telah aktif.\n\nKirimkan pesan customer ke sini.");
+            await sendTelegramMessage(env.BOT_TOKEN, chatId, "Selamat datang! Sistem Selektor SOP (Template Kaku) telah aktif.\n\nSilakan kirimkan pesan customer ke sini, saya akan memilihkan jawaban terbaik.");
             return new Response("OK", { status: 200 });
         }
 
@@ -48,6 +48,8 @@ export default {
         }
 
         // --- FITUR MEMORI (KV) ---
+        // Catatan: Walaupun pickSOPWithGroq saat ini belum menggunakan history, 
+        // kita tetap simpan agar sistem tetap memiliki basis data jika nanti ingin dikembangkan.
         let history = [];
         if (env.CHAT_HISTORY) {
             const storedHistory = await env.CHAT_HISTORY.get(`history_${chatId}`);
@@ -57,22 +59,10 @@ export default {
         }
 
         try {
-            // 1. Groq Bertindak sebagai Selector (Hanya pilih Kategori)
-            const category = await getSopCategory(env.GROQ_API_KEY, userText, history);
+            // 1. Groq Bertindak sebagai Selector (Memilih jawaban dari SOP_TEMPLATES)
+            const responseText = await pickSOPWithGroq(userText, SOP_TEMPLATES, env.GROQ_API_KEY);
 
-            // 2. LOGIKA PENJAWAB (Sesuai Kategori)
-            // Catatan: Anda bisa mengubah sop.js untuk mengekspor template jawaban.
-            // Untuk sementara, saya biarkan AI memberikan jawaban berdasarkan SOP_PROMPT penuh 
-            // ATAU kita bisa mapping jika sop.js sudah Anda ubah bentuknya.
-
-            // Contoh implementasi selector:
-            let responseText = `[AI SELECTED CATEGORY: ${category}]\n\n`;
-
-            // Sementara gunakan AI untuk generate jawaban lengkap berdasarkan kategori terpilih
-            // (Nanti bisa diganti dengan template kaku dari sop.js)
-            responseText += await getFinalResponse(env.GROQ_API_KEY, userText, category, history);
-
-            // 3. Simpan Riwayat
+            // 2. Simpan Riwayat
             if (env.CHAT_HISTORY) {
                 history.push({ role: "user", content: userText });
                 history.push({ role: "assistant", content: responseText });
@@ -80,43 +70,17 @@ export default {
                 await env.CHAT_HISTORY.put(`history_${chatId}`, JSON.stringify(history), { expirationTtl: 86400 });
             }
 
-            // 4. Kirim ke Telegram
+            // 3. Kirim ke Telegram
             await sendTelegramMessage(env.BOT_TOKEN, chatId, responseText);
 
         } catch (error) {
             console.error("ERROR:", error.message);
-            await sendTelegramMessage(env.BOT_TOKEN, chatId, "Maaf kak sedang ada gangguan teknis.");
+            await sendTelegramMessage(env.BOT_TOKEN, chatId, "Maaf kak, ada sedikit kendala koneksi dengan sistem selektor.");
         }
 
         return new Response("OK", { status: 200 });
     }
 };
-
-// Fungsi pembantu untuk jawaban akhir (bisa dipindahkan ke src/groq.js juga)
-async function getFinalResponse(apiKey, userInput, category, history) {
-    const url = "https://api.groq.com/openai/v1/chat/completions";
-    const messages = [
-        { role: "system", content: `${SOP_PROMPT}\n\nINSTRUKSI KHUSUS: Gunakan SOP Kategori ${category} untuk menjawab.` },
-        ...history.slice(-10),
-        { role: "user", content: userInput }
-    ];
-
-    const response = await fetch(url, {
-        method: "POST",
-        headers: {
-            "Authorization": `Bearer ${apiKey}`,
-            "Content-Type": "application/json"
-        },
-        body: JSON.stringify({
-            model: "llama-3.3-70b-versatile",
-            messages: messages,
-            temperature: 0.7
-        })
-    });
-
-    const data = await response.json();
-    return data.choices[0].message.content;
-}
 
 async function setBotMenu(token) {
     const url = `https://api.telegram.org/bot${token}/setMyCommands`;
