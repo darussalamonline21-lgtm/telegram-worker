@@ -82,14 +82,18 @@ Berikan balasan yang sesuai SOP dalam bahasa Indonesia yang ramah namun tegas.
 
         if (!response.ok) {
             console.error("DEBUG: Gemini API Error Response:", JSON.stringify(data));
-            return `Maaf kak, ada kendala komunikasi dengan AI (Error ${response.status}).`;
+            const errorMessage = data.error?.message || "Tidak diketahui";
+            return `Maaf kak, AI menolak (Error ${response.status}): ${errorMessage}`;
         }
 
         if (data.candidates && data.candidates[0] && data.candidates[0].content) {
             return data.candidates[0].content.parts[0].text;
         } else {
-            console.error("DEBUG: Unexpected Gemini response format:", JSON.stringify(data));
-            return "Maaf kak, respon AI tidak sesuai format. Silakan coba lagi.";
+            console.error("DEBUG: Unexpected Gemini response format atau Safety Filter:", JSON.stringify(data));
+            if (data.promptFeedback?.blockReason) {
+                return `Maaf kak, pesan diblokir oleh sistem keamanan AI (Alasan: ${data.promptFeedback.blockReason}).`;
+            }
+            return "Maaf kak, AI memberikan respon kosong. Silakan coba kalimat lain.";
         }
     } catch (error) {
         console.error("DEBUG: Fetch/System Error:", error.message);
