@@ -47,5 +47,10 @@ Jika sudah siap, silakan kabari kami kembali.`
         title: "Closing",
         reply: `Jika konsep dan estimasi sudah sesuai, kami bisa lanjutkan ke tahap pengerjaan.
 Silakan konfirmasi agar kami jadwalkan proses desainnya.`
+    },
+    {
+        id: "pertanyaan_umum",
+        title: "Pertanyaan Umum / Di luar SOP",
+        reply: `Mohon maaf kak, untuk pertanyaan tersebut saya koordinasikan dulu dengan tim teknis kami ya. Ada lagi yang bisa kami bantu terkait rencana desain kaosnya?`
     }
 ];
