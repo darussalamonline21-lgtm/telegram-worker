@@ -2,6 +2,16 @@ import { SOP_PROMPT } from "./sop.js";
 
 export default {
     async fetch(request, env) {
+        const url = new URL(request.url);
+
+        // --- FITUR REGISTRASI MENU (GET /set-menu) ---
+        if (request.method === "GET" && url.pathname === "/set-menu") {
+            const result = await setBotMenu(env.BOT_TOKEN);
+            return new Response(JSON.stringify(result), {
+                headers: { "Content-Type": "application/json" }
+            });
+        }
+
         if (request.method !== "POST") {
             return new Response("OK", { status: 200 });
         }
@@ -64,6 +74,23 @@ export default {
         return new Response("OK", { status: 200 });
     }
 };
+
+async function setBotMenu(token) {
+    const url = `https://api.telegram.org/bot${token}/setMyCommands`;
+    const body = {
+        commands: [
+            { command: "reset", description: "Hapus memori & Mulai sesi baru" }
+        ]
+    };
+
+    const response = await fetch(url, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(body)
+    });
+
+    return await response.json();
+}
 
 async function getGroqResponse(apiKey, userInput, history) {
     if (!apiKey) {
